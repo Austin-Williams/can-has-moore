@@ -2,6 +2,54 @@ import numpy as np
 import itertools as it
 import igraph as ig
 
+import argparse
+import sys
+import pickle
+import datetime
+
+from math import sqrt
+
+class Initialiser:
+	def __init__(self, new_val, accelerate, continue_file, save_option):
+		self.new_val = new_val
+		self.accelerate = accelerate
+		self.continue_file = continue_file
+		self.save_option = save_option
+
+	def initialise(self):
+		global wb
+		# set up saver
+		global saver
+		saver = Saver(self.save_option)
+		
+		# from user input, decide whether to start a new search or continue an old one
+		if self.new_val:
+			# if starting a new search then 
+			# instantiate a new WorkingBasket with proper valence
+			wb = WorkingBasket(self.new_val)
+			# have the WorkingBaket run it's new_basket method
+			wb.new_basket()
+			# Optional: run an accelerator to get the known-present edges in without running through the huristic checks
+			if self.accelerate:
+				#run accelerator protocol # todo
+				pass
+
+		elif self.continue_file:
+			# if continuing an old one then
+			# unpickle the matrix
+			wb = pickle.load(open(self.continue_file, "rb"))
+			# override user's save option (helping out forgetful users)
+			#  in the event of a continued search, the user will likely want to save progress.
+			saver.save_option = True # you're welcome self.
+			# Optional: check to make sure the loaded subgraph is feasible, otherwise trust it # todo
+
+		else:
+			sys.exit("[!] You broke it. See --help for more details.")
+		# create a manager and pass off control to the manager
+		global manager
+		manager = Manager()
+		manager.search()
+
 class WorkingBasket:
 	def __init__(self, valence):
 		self.val = valence # valence of target Moore graph
@@ -15,7 +63,7 @@ class WorkingBasket:
 		inter_fruit = it.chain.from_iterable([it.combinations(self.fruit[f],2) for f in range(self.val)])
 		[self.label(edge, -(self.e + 1)) for edge in inter_fruit]
 		[self.label(edge, -(self.e + 1)) for edge in [(i,i) for i in range(self.v)]]
-		self.current_edge = 0 # label number of the most recent edge placed
+		self.current_edge_label = 0 # label number of the most recent edge placed
 
 	def label(self, edge, label):
 		# changes the label of an edge in self.matrix
@@ -33,42 +81,149 @@ class WorkingBasket:
 	def flat_matrix(self):
 		# return a uint8 np array that 'flattens' self.matrix
 		# results in a much smaller matrix (1/4th the size) for use in parallelisation of
-		#  heuristics
+		#  heuristics. Is expensive to compute so use wisely.
 		return np.vectorize(self._flatten, otypes=[np.int8])(self.matrix)
 
 	def _flatten(self, value):
 		if value == 0:
 			return 0
+		elif value > 0:
+			return 1
 		else:
-			return value / abs(value)
+			return -1
+
+class Manager:
+	def __init__(self):
+		global wb
+		global saver
+		global heuristic_conductor
+		heuristic_conductor = HeuristicConductor()
+
+	def search(self):
+		while True:
+			# EdgePicker tries to pick an available edge to label WorkingBasket.current_edge_label
+			try:
+				new_edge = choose_new_edge('deep')
+
+			except EdgesExhausted: 
+				# if there are no more available edges to pick, then we're finished and we need to check
+				#  whether we've found a Moore graph or whether one isn't possible
+				endgame()
+			else:
+				# edges are available to place. But *first* we need to check whether the current subgraph is feasible
+				# !Checking this first is critical to the proper operation of the algorithm. Do not place a new edge before 
+				#  running the heuristics first!
+
+				# HeuristicChecker runs heuristic checks to see if current basket can be ruled out as a subgraph
+				if not heuristic_conductor.passes():
+					# if the most recently placed edge can be ruled out then:
+					# edge placement number WorkingBasket.current_edge_label is marked and reverted
+					wb.matrix[wb.matrix == wb.current_edge_label] = -(wb.current_edge_label -1)
+					wb.matrix[wb.matrix == -wb.current_edge_label] = 0
+					# edge placement number WorkingBasket.current_edge_label is decremented
+					wb.current_edge_label -= 1
+					# progress is saved / WorkingBaseket is pickled
+					saver.save()
+
+				else:
+					# if the most recently placed edge looks good according to the heuristics then:
+					# WorkingBasket.current_edge_label is incremented
+					wb.current_edge_label += 1
+					# the new_edge is labelled with wb.current_edge_label
+					wb.label(new_edge, wb.current_edge_label)
+					# Helpers mark newly unavailable edges with -WorkingBasket.current_edge_label # todo
+					# progress is saved / WorkingBaseket is pickled
+					saver.save()
+			break # todo remove this break, this is just to prevent endless cycling while the rest of the program is absent.
+
+class HeuristicConductor:
+	def __init__(self):
+		global wb
+
+	def passes(self):
+		# return True iff all huristic checks say wb may still be a feasible subgraph
+		return True # todo 
+	pass #to do
+
+def choose_new_edge(mode):
+	global wb
+	available_edges = []
+	edge = None
+	# compute set of available edges and store it as available_edges
+		# todo
+	# if no edges are available then raise exception
+	if not available_edges:
+		raise EdgesExhausted()
+	else:
+		# select the new edge based on mode (deep, wide, or random). Use deep by default.
+		#to do
+		pass # todo
+
+	return edge
+
+class EdgesExhausted(Exception):
+	# this exception is raised by choose_new_edge if there are no avaialable edges from which to choose
+	pass
+
+class Saver:
+	def __init__(self, save_option):
+		self.save_option = save_option
+		global wb
+
+	def save(self):
+		if self.save_option:
+			filename = 'moore_search-val-'+ str(wb.val) + '-' + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")+".p"
+			pickle.dump(wb, open(filename, "wb"))
+
+def endgame():
+	global wb
+	candidate_graph = CandidateGraph(wb.matrix)
+	verifier = Verifier(wb.val, candidate_graph)
+	if verifier.verify():
+		# we found a Moore graph!
+		# save the adjacencyMatrix
+		filename = 'moore_graph-val-' + str(wb.val) + "-" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")+".p"
+		pickle.dump(list(c.graph.get_adjacency()) , open(filename, "wb"))
+		sys.exit("[!] A Moore graph was found and saved.")
+	else: # not a moore graph.
+		sys.exit("[!] No Moore graph was found.")
 
 class Verifier:
-	def __init__(self, valence, basket):
+	def __init__(self, valence, candidate_graph):
+		self.candidate_graph = candidate_graph # expected to be an instantiation of the CandidateGraph class
 		self.val = valence # valence of the target Moore graph
 		self.v = 1 + self.val + self.val * (self.val - 1) # number of vertices in the target Moore graph
 		self.e = self.v * self.val / 2 # number of edges in the target Moore graph
-		self.basket = basket # the WorkingBasket's self.matrix
-		self.basket_v = self.val * (self.val - 1) # number of vertices we expect to see in the basket
 		self.fruit = tuple(tuple(i*(self.val-1)+j for j in range(0,self.val-1)) for i in range(0,self.val))
-		self.build_adj_mat() # construct the adjacency matrix of the hopeful Moore graph
-		self.graph = ig.Graph.Adjacency(self.adj_mat.tolist()) # igraph graph constructed from self.adj_mat
 
 	def verify(self):
-		# diamter 2
-		self.diameter = self.graph.diameter()
-		self.diameter_check = self.diameter == 2
+		# diameter 2
+		self.diameter_check = self.candidate_graph.graph.diameter() == 2
 		# girth 5
-		self.girth = self.graph.girth()
-		self.girth_check = self.girth == 5
+		self.girth_check = self.candidate_graph.graph.girth() == 5
 		# degree self.val
-		self.degree_check = all([d == self.val for d in self.graph.degree()])
+		self.degree_check = all([d == self.val for d in self.candidate_graph.graph.degree()])
 		# order self.v
-		self.order_check = self.graph.vcount == self.v
+		self.order_check = self.candidate_graph.graph.vcount == self.v
+		# edge count
+		self.edge_check = self.candidate_graph.graph.ecount == self.e
 		# return Moore graph staus
-		return self.diameter_check and self.girth_check and self.degree_check and self.order_check
+		return self.diameter_check and self.girth_check and self.degree_check and self.order_check and self.edge_check
+
+class CandidateGraph:
+	def __init__(self, basket):
+		self.basket = basket # the WorkingBasket's self.matrix
+		self.basket_v = len(basket[:,1]) # number of vertices in the basket
+		self.val = int((sqrt(4 * self.basket_v + 1) + 1) / 2) # expected valence of the target Moore graph
+		self.fruit = tuple(tuple(i*(self.val-1)+j for j in range(0,self.val-1)) for i in range(0,self.val))
+
+		self.v = 1 + self.val + self.val * (self.val - 1) # number of vertices in the complete graph
+		self.build_adj_mat() # construct the adjacency matrix of the hopeful Moore graph
+		self.graph = ig.Graph.Adjacency(self.adj_mat.tolist()) # igraph graph constructed from self.adj_mat
+		self.graph.to_undirected()
 
 	def build_adj_mat(self):
-		# use self.basket to create an adjacency matrix for the full candidate graph 
+		# use self.basket to create an adjacency matrix for the complete candidate graph 
 		self.adj_mat = np.vectorize(self._project, otypes=[np.int8])(self.basket) # gives the adj matrix of the basket
 		self.adj_mat.resize((self.v, self.v)) # adds (self.val + 1) more rows/cols to adj_mat, all zeroed out
 		parent_verts = tuple(i for i in range(self.basket_v,self.basket_v + self.val))
@@ -78,7 +233,6 @@ class Verifier:
 		# connect the root vertex to each parent vertex
 		root_edges = tuple((self.v - 1, parent_verts[p]) for p in range(self.val))
 		[self._add_edge(edge) for edge in root_edges]
-
 
 	def _project(self, value):
 		if value > 0:
@@ -91,47 +245,25 @@ class Verifier:
 		self.adj_mat[edge[0],edge[1]] = 1
 		self.adj_mat[edge[1],edge[0]] = 1
 
-class Initialiser:
-	# from user input, decide whether to start a new search or continue an old one
-
-		# if starting a new search then 
-			# instantiate a new WorkingBasket with proper valence
-			# have the WorkingBaket run it's new_basket method
-			# Optional: run an accelerator to get the known-present edges in without running through the huristic checks
-
-		# if continuing an old one then
-			# unpickle the matrix
-			# compute the valence
-			# instantiate a new WorkingBasket with proper valence
-			# compute the follwoing from the unpickled file and store the values in the WorkingBasket
-				# self.matrix
-				# self.current_edge
-			# Optional: check to make sure the loaded subgraph is feasible, otherwise trust it
-
-	# indicate that all went well and we're ready to have the conductor start working
-
-	pass
-
-class Conductor:
-	# HuristicChecker runs heuristic checks to see if current basket can be ruled out as a subgraph
-		# if it can be ruled out then:
-			# edge placement number WorkingBasket.current_edge is marked and reverted
-			# edge placement number WorkingBasket.current_edge is decremented
-			# progress is saved / WorkingBaseket is pickled
-
-		# if it cannot be ruled out, then:
-			# WorkingBasket.current_edge is incremented
-			# EdgePicker tries and picks an available edge to label WorkingBasket.current_edge
-				# If there are no more available edges to pick (raise Exception), then we're finished and we need to check
-				#  whether we've found a Moore graph or whether one isn't possible.
-					# In this event, it's worthwhile to save / pickle the progress before evaluating.
-			# Helpers mark newly unavailable edges with -WorkingBasket.current_edge
-			# progress is saved / WorkingBaseket is pickled
-	# repeat 
-	pass
 
 if __name__ == "__main__":
-	# for quick / easy testing, will remove later
-	b = WorkingBasket(3)
-	b.new_basket()
-	v = Verifier(3, b.matrix)
+	# if script is executed at the CLI parse the CLI arguments
+	usage = '''usage: %(prog)s [-n <valence>] [-a] [-s][-c <pickle_file.p>]'''
+	parser = argparse.ArgumentParser(usage=usage)
+	parser.add_argument("-n", "--new", type=int, help="Begin a new search for a Moore of valence NEW_VAL", action="store", dest="new_val")
+	parser.add_argument("-a", "--accelerate", help="Place known edges in the basket without checking heuristics when ACCELERATE option is set. Speeds up search without any risk of failure.", action="store_true", dest="accelerate")
+	parser.add_argument("-s", "--save", help="Saves progress of search so may be continued later. Ideal for large valence graphs.", action="store_true", dest="save_option")
+	parser.add_argument("-c", "--continue", type=str, help="Continue the search saved in CONTINUE_FILE", action="store", dest="continue_file")
+	args = parser.parse_args()
+
+	# verify consistency of options selection
+	if not (args.new_val or args.continue_file):
+		sys.exit("[!] Please choose either -n or -c to run this script. See --help for more details.")
+	if args.accelerate and not args.new_val:
+		sys.exit("[!] To use the --accelerate feauture you must specify a valnce using -n. See --help for more details.")
+	if (args.new_val or args.accelerate) and args.continue_file:
+		sys.exit("[!] The -c (or --continue) feature cannot be used with -n or -a. See --help for more details.")
+
+	# hand off control to the initialiser
+	initialiser = Initialiser(args.new_val, args.accelerate, args.continue_file, args.save_option)
+	initialiser.initialise()
