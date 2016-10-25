@@ -261,22 +261,53 @@ def label_non_edges(new_edge):
 	## Make negative the edges that would cause a vertex to have degree > wb.val-1
 	#    note that the addition of new_edge will only have raised the degree of the vertices new_edge[0] and new_edge[1], so we need
 	#     only check those vertices
+	
 	for edge_end in range(2):
 		if wb.degree_of(new_edge[edge_end]) == wb.val -1: # then no more edges can be added to vertex new_edge[0]
 			# so we find all potential edges at new_edge[0] and label them -wb.current_edge_label
 			[wb.label((new_edge[edge_end],v), -wb.current_edge_label) for v in np.where(wb.matrix[new_edge[edge_end]] == 0)[0]]
+
 	## Make negative the edges that would create triangles
 	#    begin with the vertex new_edge[0] and look at every vertex already incident to edge[0]
 	#    that collection of vertices is np.where(wb.matrix[new_edge[0]] > 0)[0]
 	# if wb.matrix[vertex][new_edge[1]] is zero the mark that edge negative (because adding it would cause a triangle to form)
 	for edge_end in range(2):	
-		[wb.label((neib,new_edge[(edge_end + 1)%2]),-wb.current_edge_label) for neib in np.where(wb.matrix[new_edge[edge_end]] > 0)[0] if wb.matrix[neib][new_edge[(edge_end + 1)%2]] == 0]
-	## Make negative the edges that would create rectangles (three cases) # todo
-	# case 1 # todo
+		[wb.label((neighbor,new_edge[(edge_end + 1)%2]),-wb.current_edge_label) for neighbor in np.where(wb.matrix[new_edge[edge_end]] > 0)[0] if wb.matrix[neighbor][new_edge[(edge_end + 1)%2]] == 0]
+	
+	## Make negative the edges that would create rectangles (three cases)
+	# case 1
+	#	 suppose new_edge = (v0, v1)
+	#    find the neighbors(v0). They are np.where(wb.matrix[new_edge[0]] > 0)[0]
+	#    find the neighbors(v1). They are np.where(wb.matrix[new_edge[1]] > 0)[0]
+	#	 we want to rule out all edges (i,j) where i is in neighbors(v0) and j is in neighbors(v1), because those edges would cause
+	#     a rectangle to form
+	
+	[ wb.label((i,j),-wb.current_edge_label) for (i,j) in ((i,j) for i in np.where(wb.matrix[new_edge[0]] > 0)[0] for j in np.where(wb.matrix[new_edge[1]] > 0)[0]) if wb.matrix[i][j] == 0]
 
-	# case 2 # todo
+	# cases 2 & 3
+	#    suppose new_edge = (v0, v1)
+	#    find the neighbors of the neighbors of v0
+	for edge_end in range(2):	
+		neighbors_of_v0 = set()
+		neighbors_of_v0.update([n for n in np.where(wb.matrix[new_edge[edge_end]] > 0)[0] if n != new_edge[edge_end]]) # exclude new_edge[1] for efficiency
+		array_of_nn_of_v0 =  [np.where(wb.matrix[neighbor] > 0)[0] for neighbor in neighbors_of_v0] # array of neighbors of neighbors of v0
+		nn_of_v0 = set() # neighbors of neighbors of v0
+		[nn_of_v0.update(x) for x in array_of_nn_of_v0]
+		nn_of_v0.discard(new_edge[edge_end]) #neighbors of neighbors of v0 excluding v0
+		# rule out all edges (i,j) where i is in neighbors(v0) and j is in neighbors(v1) (if they haven't been ruled out already), 
+		#  because those edges would cause a rectangle to form
+		[wb.label((x,new_edge[(edge_end + 1)%2]),-wb.current_edge_label) for x in nn_of_v0 if wb.matrix[x][new_edge[(edge_end + 1)%2]] == 0]
 
-	# case 3 # todo
+
+def test_setup(): # todo remove this function
+	global wb
+	global new_edge
+	wb.current_edge_label = 99
+	wb.label((0,1),4)
+	wb.label((0,2),4)
+	wb.label((2,3),4)
+	new_edge = (0,2)
+
 
 if __name__ == "__main__":
 	# if script is executed at the CLI parse the CLI arguments
