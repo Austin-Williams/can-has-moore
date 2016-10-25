@@ -136,9 +136,9 @@ class Manager:
 					wb.current_edge_label += 1
 					# the new_edge is labelled with wb.current_edge_label
 					wb.label(new_edge, wb.current_edge_label)
-					# Helpers mark newly unavailable edges with -WorkingBasket.current_edge_label # todo
-					label_non_edges(new_edge, wb.current_edge_label)
-					# progress is saved / WorkingBaseket is pickled
+					# mark newly unavailable edges with -WorkingBasket.current_edge_label
+					label_non_edges(new_edge)
+					# progress is saved / WorkingBasket is pickled
 					saver.save()
 			break # todo remove this break, this is just to prevent endless cycling while the rest of the program is absent.
 
@@ -298,6 +298,13 @@ def label_non_edges(new_edge):
 		#  because those edges would cause a rectangle to form
 		[wb.label((x,new_edge[(edge_end + 1)%2]),-wb.current_edge_label) for x in nn_of_v0 if wb.matrix[x][new_edge[(edge_end + 1)%2]] == 0]
 
+def feasibility_check_1():
+	# return True iff for every vertex v, and every fruit f not containing v, there is either already an edge from v to f or else there
+	#  is a potential edge (labeled '0' in WorkingBasket) from v to f
+	global wb
+	return all([all([any(wb.matrix[f,v] >= 0) for f in wb.fruit if v not in f]) for v in range(len(wb.matrix))])
+
+def feasibility_check_2(): # todo
 
 def test_setup(): # todo remove this function
 	global wb
