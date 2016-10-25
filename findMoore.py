@@ -84,6 +84,11 @@ class WorkingBasket:
 		#  heuristics. Is expensive to compute so use wisely.
 		return np.vectorize(self._flatten, otypes=[np.int8])(self.matrix)
 
+	def degree_of(self, vertex):
+		# computes the degree of vertex in the current working basket
+		return (self.matrix[vertex] > 0).sum()
+
+
 	def _flatten(self, value):
 		if value == 0:
 			return 0
@@ -132,6 +137,7 @@ class Manager:
 					# the new_edge is labelled with wb.current_edge_label
 					wb.label(new_edge, wb.current_edge_label)
 					# Helpers mark newly unavailable edges with -WorkingBasket.current_edge_label # todo
+					label_non_edges(new_edge, wb.current_edge_label)
 					# progress is saved / WorkingBaseket is pickled
 					saver.save()
 			break # todo remove this break, this is just to prevent endless cycling while the rest of the program is absent.
@@ -155,8 +161,8 @@ def choose_new_edge(mode):
 	if not available_edges:
 		raise EdgesExhausted()
 	else:
-		# select the new edge based on mode (deep, wide, or random). Use deep by default.
-		#to do
+		# select the new edge based on mode (deep, wide, or random). Use deep by default. Return a tuple.
+		# todo
 		pass # todo
 
 	return edge
@@ -174,19 +180,6 @@ class Saver:
 		if self.save_option:
 			filename = 'moore_search-val-'+ str(wb.val) + '-' + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")+".p"
 			pickle.dump(wb, open(filename, "wb"))
-
-def endgame():
-	global wb
-	candidate_graph = CandidateGraph(wb.matrix)
-	verifier = Verifier(wb.val, candidate_graph)
-	if verifier.verify():
-		# we found a Moore graph!
-		# save the adjacencyMatrix
-		filename = 'moore_graph-val-' + str(wb.val) + "-" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")+".p"
-		pickle.dump(list(c.graph.get_adjacency()) , open(filename, "wb"))
-		sys.exit("[!] A Moore graph was found and saved.")
-	else: # not a moore graph.
-		sys.exit("[!] No Moore graph was found.")
 
 class Verifier:
 	def __init__(self, valence, candidate_graph):
@@ -245,6 +238,45 @@ class CandidateGraph:
 		self.adj_mat[edge[0],edge[1]] = 1
 		self.adj_mat[edge[1],edge[0]] = 1
 
+def endgame():
+	global wb
+	candidate_graph = CandidateGraph(wb.matrix)
+	verifier = Verifier(wb.val, candidate_graph)
+	if verifier.verify():
+		# we found a Moore graph!
+		# save the adjacencyMatrix
+		filename = 'moore_graph-val-' + str(wb.val) + "-" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")+".p"
+		pickle.dump(list(c.graph.get_adjacency()) , open(filename, "wb"))
+		sys.exit("[!] A Moore graph was found and saved.")
+	else: # not a moore graph.
+		sys.exit("[!] No Moore graph was found.")
+
+def label_non_edges(new_edge):
+	# Calling this function should always be imediately preceeded by calling wb.label(new_edge, wb.current_edge_label)
+	# This function assumes new_edge has just been added to WorkingBasket
+	# The goal of this function is to find all of the edges that are now ruled out because of the placement of new_edge (and that
+	#  had *not* already been ruled out prior to the placement of new_edge) and label those new non-edges with -wb.current_edge_label
+	# This is one area of code that may benefit from parallelisation
+	global wb
+	## Make negative the edges that would cause a vertex to have degree > wb.val-1
+	#    note that the addition of new_edge will only have raised the degree of the vertices new_edge[0] and new_edge[1], so we need
+	#     only check those vertices
+	for edge_end in range(2):
+		if wb.degree_of(new_edge[edge_end]) == wb.val -1: # then no more edges can be added to vertex new_edge[0]
+			# so we find all potential edges at new_edge[0] and label them -wb.current_edge_label
+			[wb.label((new_edge[edge_end],v), -wb.current_edge_label) for v in np.where(wb.matrix[new_edge[edge_end]] == 0)[0]]
+	## Make negative the edges that would create triangles
+	#    begin with the vertex new_edge[0] and look at every vertex already incident to edge[0]
+	#    that collection of vertices is np.where(wb.matrix[new_edge[0]] > 0)[0]
+	# if wb.matrix[vertex][new_edge[1]] is zero the mark that edge negative (because adding it would cause a triangle to form)
+	for edge_end in range(2):	
+		[wb.label((neib,new_edge[(edge_end + 1)%2]),-wb.current_edge_label) for neib in np.where(wb.matrix[new_edge[edge_end]] > 0)[0] if wb.matrix[neib][new_edge[(edge_end + 1)%2]] == 0]
+	## Make negative the edges that would create rectangles (three cases) # todo
+	# case 1 # todo
+
+	# case 2 # todo
+
+	# case 3 # todo
 
 if __name__ == "__main__":
 	# if script is executed at the CLI parse the CLI arguments
