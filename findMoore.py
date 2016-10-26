@@ -7,7 +7,7 @@ import sys
 import pickle
 import datetime
 
-from math import sqrt
+from math import sqrt, floor
 
 class Initialiser:
 	def __init__(self, new_val, accelerate, continue_file, save_option):
@@ -41,7 +41,7 @@ class Initialiser:
 			# override user's save option (helping out forgetful users)
 			#  in the event of a continued search, the user will likely want to save progress.
 			saver.save_option = True # you're welcome self.
-			# Optional: check to make sure the loaded subgraph is feasible, otherwise trust it # todo
+			# Optional: check to make sure the loaded subgraph is well formatted, otherwise trust it # todo
 
 		else:
 			sys.exit("[!] You broke it. See --help for more details.")
@@ -137,10 +137,10 @@ class Manager:
 					# the new_edge is labelled with wb.current_edge_label
 					wb.label(new_edge, wb.current_edge_label)
 					# mark newly unavailable edges with -WorkingBasket.current_edge_label
-					label_non_edges(new_edge)
+					label_non_edges(new_edge, -wb.current_edge_label)
 					# progress is saved / WorkingBasket is pickled
 					saver.save()
-			break # todo remove this break, this is just to prevent endless cycling while the rest of the program is absent.
+			break # todo remove this break, this is just to prevent endless looping while the rest of the program is absent.
 
 class HeuristicConductor:
 	def __init__(self):
@@ -148,7 +148,7 @@ class HeuristicConductor:
 
 	def passes(self):
 		# return True iff all huristic checks say wb may still be a feasible subgraph
-		return True # todo 
+		return feasibility_check_1() and feasibility_check_2()
 	pass #to do
 
 def choose_new_edge(mode):
@@ -251,7 +251,8 @@ def endgame():
 	else: # not a moore graph.
 		sys.exit("[!] No Moore graph was found.")
 
-def label_non_edges(new_edge):
+def label_non_edges(new_edge, label):
+	# Note, label should be a negative integer.
 	# Calling this function should always be imediately preceeded by calling wb.label(new_edge, wb.current_edge_label)
 	# This function assumes new_edge has just been added to WorkingBasket
 	# The goal of this function is to find all of the edges that are now ruled out because of the placement of new_edge (and that
@@ -265,24 +266,24 @@ def label_non_edges(new_edge):
 	for edge_end in range(2):
 		if wb.degree_of(new_edge[edge_end]) == wb.val -1: # then no more edges can be added to vertex new_edge[0]
 			# so we find all potential edges at new_edge[0] and label them -wb.current_edge_label
-			[wb.label((new_edge[edge_end],v), -wb.current_edge_label) for v in np.where(wb.matrix[new_edge[edge_end]] == 0)[0]]
+			[wb.label((new_edge[edge_end],v), label) for v in np.where(wb.matrix[new_edge[edge_end]] == 0)[0]]
 
 	## Make negative the edges that would create triangles
 	#    begin with the vertex new_edge[0] and look at every vertex already incident to edge[0]
 	#    that collection of vertices is np.where(wb.matrix[new_edge[0]] > 0)[0]
 	# if wb.matrix[vertex][new_edge[1]] is zero the mark that edge negative (because adding it would cause a triangle to form)
 	for edge_end in range(2):	
-		[wb.label((neighbor,new_edge[(edge_end + 1)%2]),-wb.current_edge_label) for neighbor in np.where(wb.matrix[new_edge[edge_end]] > 0)[0] if wb.matrix[neighbor][new_edge[(edge_end + 1)%2]] == 0]
+		[wb.label((neighbor,new_edge[(edge_end + 1)%2]),label) for neighbor in np.where(wb.matrix[new_edge[edge_end]] > 0)[0] if wb.matrix[neighbor][new_edge[(edge_end + 1)%2]] == 0]
 	
 	## Make negative the edges that would create rectangles (three cases)
 	# case 1
 	#	 suppose new_edge = (v0, v1)
-	#    find the neighbors(v0). They are np.where(wb.matrix[new_edge[0]] > 0)[0]
+	#    find the neighbors(v0). They are nlabel
 	#    find the neighbors(v1). They are np.where(wb.matrix[new_edge[1]] > 0)[0]
 	#	 we want to rule out all edges (i,j) where i is in neighbors(v0) and j is in neighbors(v1), because those edges would cause
 	#     a rectangle to form
 	
-	[ wb.label((i,j),-wb.current_edge_label) for (i,j) in ((i,j) for i in np.where(wb.matrix[new_edge[0]] > 0)[0] for j in np.where(wb.matrix[new_edge[1]] > 0)[0]) if wb.matrix[i][j] == 0]
+	[ wb.label((i,j),label) for (i,j) in ((i,j) for i in np.where(wb.matrix[new_edge[0]] > 0)[0] for j in np.where(wb.matrix[new_edge[1]] > 0)[0]) if wb.matrix[i][j] == 0]
 
 	# cases 2 & 3
 	#    suppose new_edge = (v0, v1)
@@ -296,15 +297,35 @@ def label_non_edges(new_edge):
 		nn_of_v0.discard(new_edge[edge_end]) #neighbors of neighbors of v0 excluding v0
 		# rule out all edges (i,j) where i is in neighbors(v0) and j is in neighbors(v1) (if they haven't been ruled out already), 
 		#  because those edges would cause a rectangle to form
-		[wb.label((x,new_edge[(edge_end + 1)%2]),-wb.current_edge_label) for x in nn_of_v0 if wb.matrix[x][new_edge[(edge_end + 1)%2]] == 0]
+		[wb.label((x,new_edge[(edge_end + 1)%2]),label) for x in nn_of_v0 if wb.matrix[x][new_edge[(edge_end + 1)%2]] == 0]
 
 def feasibility_check_1():
 	# return True iff for every vertex v, and every fruit f not containing v, there is either already an edge from v to f or else there
 	#  is a potential edge (labeled '0' in WorkingBasket) from v to f
 	global wb
-	return all([all([any(wb.matrix[f,v] >= 0) for f in wb.fruit if v not in f]) for v in range(len(wb.matrix))])
+	return all([all([any(wb.matrix[f,v] >= 0) for f in wb.fruit if v not in f]) for v in range(wb.v)])
 
-def feasibility_check_2(): # todo
+def feasibility_check_2():
+	# return True iff for every v0 and every v1 not in the fruit of v0, there exists a path of length at most two (through either 
+	#  already placed edges and/or potential edges labeled 0).
+	global wb
+	return all([all([v1 in town_of(v0) for v1 in [v for v in range(v0+1,wb.v) if v not in fruit_of(v0)]]) for v0 in range(wb.v-1)])
+
+def fruit_of(vertex):
+	# returns the fruit of the input vertex
+	global wb
+	return wb.fruit[int(floor(vertex/(wb.val - 1)))]
+
+def town_of(v0):
+	# returns a set of all current and potential neighbors of vertex, as well as all current and potential neighbors of
+	#  neighbors of vertex. This is used to determine whether another vertex is within (or *can be* within) distance two of vertex
+	global wb
+	neighbors_of_v0 = set() # potential neighbors of v0
+	neighbors_of_v0.update([n for n in np.where(wb.matrix[v0] >= 0)[0]])
+	nn_of_v0 = set() # potential neighbors of neighbors of v0
+	[nn_of_v0.update(x) for x in [np.where(wb.matrix[neighbor] >= 0)[0] for neighbor in neighbors_of_v0]]
+	town_of_v0 = neighbors_of_v0 | nn_of_v0 # set of all vertices that are potential or current neighbors or neighbors of neighbors of v0
+	return town_of_v0
 
 def test_setup(): # todo remove this function
 	global wb
