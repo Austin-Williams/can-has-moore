@@ -132,7 +132,7 @@ class Manager:
 					# mark newly unavailable edges with -WorkingBasket.current_edge_label
 					label_non_edges(new_edge, -wb.current_edge_label)
 					# progress is saved / WorkingBasket is pickled
-					if (wb.current_edge_label % 1000) == 0:
+					if (wb.current_edge_label % 10000) == 0:
 						saver.save()
 
 class HeuristicConductor:
