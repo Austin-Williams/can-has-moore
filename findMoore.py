@@ -59,9 +59,9 @@ class WorkingBasket:
 
 	def new_basket(self):
 		self.matrix = np.zeros(shape=(self.v, self.v), dtype=np.int32) # working basket zeroed out
-		# rule out inter-fruit edges and self-loops
-		inter_fruit = it.chain.from_iterable([it.combinations(self.fruit[f],2) for f in range(self.val)])
-		[self.label(edge, -(self.e + 1)) for edge in inter_fruit]
+		# rule out intra-fruit edges and self-loops
+		intra_fruit = it.chain.from_iterable([it.combinations(self.fruit[f],2) for f in range(self.val)])
+		[self.label(edge, -(self.e + 1)) for edge in intra_fruit]
 		[self.label(edge, -(self.e + 1)) for edge in [(i,i) for i in range(self.v)]]
 		self.current_edge_label = 0 # label number of the most recent edge placed
 
@@ -70,32 +70,21 @@ class WorkingBasket:
 		self.matrix[edge[0],edge[1]] = label
 		self.matrix[edge[1],edge[0]] = label
 
-	def construct_full_graph(self):
-		# outputs the adjacency matrix of the graph (inluding root and parent vertices)
-		#  of the graph currently represented by self.matrix
-
-		# convert 
-		adj_mat = np.vectorize(self._flatten, otypes=[np.int8])(self.matrix)
-		pass
-
 	def flat_matrix(self):
 		# return a uint8 np array that 'flattens' self.matrix
 		# results in a much smaller matrix (1/4th the size) for use in parallelisation of
 		#  heuristics. Is expensive to compute so use wisely.
-		return np.vectorize(self._flatten, otypes=[np.int8])(self.matrix)
+		return np.vectorize(self._flatten, otypes=[np.bool])(self.matrix)
 
 	def degree_of(self, vertex):
 		# computes the degree of vertex in the current working basket
 		return (self.matrix[vertex] > 0).sum()
 
-
 	def _flatten(self, value):
-		if value == 0:
-			return 0
-		elif value > 0:
-			return 1
+		if value < 0:
+			return False
 		else:
-			return -1
+			return True
 
 class Manager:
 	def __init__(self):
@@ -309,7 +298,15 @@ def feasibility_check_2():
 	# return True iff for every v0 and every v1 not in the fruit of v0, there exists a path of length at most two (through either 
 	#  already placed edges and/or potential edges labeled 0).
 	global wb
-	return all([all([v1 in town_of(v0) for v1 in [v for v in range(v0+1,wb.v) if v not in fruit_of(v0)]]) for v0 in range(wb.v-1)])
+	neighbors = wb.flat_matrix() # a boolean adjacency matrix -- True wherever an already placed or a potential edge exists, False elsewhere
+	neighbors_of_neighbors = neighbors.dot(neighbors) # i,j is True if there exists a path of length 2 from i to j
+	intra_fruit_matrix = np.zeros(shape=(wb.v, wb.v), dtype=bool)
+	[[[label_true(intra_fruit_matrix,e[0],e[1]) for e in [(i,j) for i in fruit for j in fruit]] for v in fruit] for fruit in wb.fruit]
+	return (neighbors + neighbors_of_neighbors + intra_fruit_matrix).all()
+
+
+def label_true(matrix, i, j):
+	matrix[i][j] = matrix[j][i] = True
 
 def fruit_of(vertex):
 	# returns the fruit of the input vertex
