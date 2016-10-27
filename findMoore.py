@@ -121,7 +121,8 @@ class Manager:
 					# edge placement number WorkingBasket.current_edge_label is decremented
 					wb.current_edge_label -= 1
 					# progress is saved / WorkingBaseket is pickled
-					saver.save()
+					print '[X] feasibility check failure'
+					saver.save('feas-chk-fail')
 
 				else:
 					# if the most recently placed edge looks good according to the heuristics then:
@@ -133,7 +134,7 @@ class Manager:
 					label_non_edges(new_edge, -wb.current_edge_label)
 					# progress is saved / WorkingBasket is pickled
 					if (wb.current_edge_label % 10000) == 0:
-						saver.save()
+						saver.save('')
 
 class HeuristicConductor:
 	def __init__(self):
@@ -169,9 +170,9 @@ class Saver:
 		self.save_option = save_option
 		global wb
 
-	def save(self):
+	def save(self, label):
 		if self.save_option:
-			filename = 'moore_search-val-'+ str(wb.val) + '-' + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")+".p"
+			filename = 'moore_search-val-'+ str(wb.val) + '-' + label + '-'+ datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")+".p"
 			pickle.dump(wb, open(filename, "wb"))
 
 class Verifier:
