@@ -55,6 +55,7 @@ class WorkingBasket:
 		self.v = self.val * (self.val - 1) # number of vertices in the basket
 		self.e = self.v * self.val / 2 # number of edges in the target basket
 		self.fruit = tuple(tuple(i*(self.val-1)+j for j in range(0,self.val-1)) for i in range(0,self.val))
+		self.loop_count = int(0)
 
 	def new_basket(self):
 		self.matrix = np.zeros(shape=(self.v, self.v), dtype=np.int32) # working basket zeroed out
@@ -99,7 +100,8 @@ class Manager:
 
 	def search(self):
 		while True:
-			print 'edge_label is ' + str(wb.current_edge_label)
+			wb.loop_count += 1
+			print 'edge_label is ' + str(wb.current_edge_label) + ' -- loop_count is ' + str(wb.loop_count)
 			# EdgePicker tries to pick an available edge to label WorkingBasket.current_edge_label
 			try:
 				new_edge = choose_new_edge('deep')
@@ -121,8 +123,6 @@ class Manager:
 					# edge placement number WorkingBasket.current_edge_label is decremented
 					wb.current_edge_label -= 1
 					# progress is saved / WorkingBaseket is pickled
-					print '[X] feasibility check failure'
-					saver.save('feas-chk-fail')
 
 				else:
 					# if the most recently placed edge looks good according to the heuristics then:
@@ -133,8 +133,8 @@ class Manager:
 					# mark newly unavailable edges with -WorkingBasket.current_edge_label
 					label_non_edges(new_edge, -wb.current_edge_label)
 					# progress is saved / WorkingBasket is pickled
-					if (wb.current_edge_label % 10000) == 0:
-						saver.save('')
+			if (wb.loop_count % 1000) == 0:
+				saver.save('')
 
 class HeuristicConductor:
 	def __init__(self):
@@ -172,7 +172,7 @@ class Saver:
 
 	def save(self, label):
 		if self.save_option:
-			filename = 'moore_search-val-'+ str(wb.val) + '-' + label + '-'+ datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")+".p"
+			filename = 'moore_search-val-'+ str(wb.val) + '-' + label + '-'+ datetime.datetime.now().strftime("%Y-%m-%d")+".p"
 			pickle.dump(wb, open(filename, "wb"))
 
 class Verifier:
