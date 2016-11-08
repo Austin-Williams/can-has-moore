@@ -1,10 +1,8 @@
 ## Getting Started
 
 ```
-$ sudo apt-get upgrade
-$ sudo apt-get install python-igraph
-$ sudo apt-get install python-numpy
-$ sudo apt-get install git
+$ sudo apt-get update
+$ sudo apt-get install python-igraph python-numpy git -y
 $ git clone https://github.com/Austin-Williams/can-has-moore.git
 $ cd can-has-moore
 $ tmux
