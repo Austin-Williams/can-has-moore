@@ -167,7 +167,6 @@ class HeuristicConductor:
 	def passes(self):
 		# return True iff all huristic checks say wb may still be a feasible subgraph
 		return feasibility_check_1() and feasibility_check_2()
-	pass #to do
 
 def choose_new_edge(mode):
 	# todo improve the speed of this function. It is currently one of the bottlenecks.
