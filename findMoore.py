@@ -6,6 +6,7 @@ import argparse
 import sys
 import pickle
 import datetime
+import time
 
 from math import sqrt, floor
 
@@ -71,10 +72,14 @@ class WorkingBasket:
 		self.matrix[edge[1],edge[0]] = label
 
 	def flat_matrix(self):
+		t = time.time() # todo remove time
 		# return a uint8 np array that 'flattens' self.matrix
 		# results in a much smaller matrix (1/4th the size) for use in parallelisation of
 		#  heuristics. Is expensive to compute so use wisely.
-		return np.vectorize(self._flatten, otypes=[np.bool])(self.matrix)
+		flat = np.vectorize(self._flatten, otypes=[np.bool])(self.matrix)
+		td = time.time() - t # todo remove time
+		print 'Time it took to do flat_matrix = ' + str(td) # todo remove
+		return flat
 
 	def degree_of(self, vertex):
 		# computes the degree of vertex in the current working basket
@@ -250,6 +255,7 @@ def endgame():
 		sys.exit("[!] No Moore graph was found.")
 
 def label_non_edges(new_edge, label):
+	# This function takes neglible time to complete.
 	# Note, label should be a negative integer.
 	# Calling this function should always be imediately preceeded by calling wb.label(new_edge, wb.current_edge_label)
 	# This function assumes new_edge has just been added to WorkingBasket
@@ -299,19 +305,32 @@ def label_non_edges(new_edge, label):
 		[wb.label((x,new_edge[(edge_end + 1)%2]),label) for x in nn_of_v0 if wb.matrix[x][new_edge[(edge_end + 1)%2]] == 0]
 
 def feasibility_check_1():
+	# This function takes negligible time to complete.
 	# return True iff for every vertex v, and every fruit f not containing v, there is either already an edge from v to f or else there
 	#  is a potential edge (labeled '0' in WorkingBasket) from v to f
 	global wb
 	return all([all([any(wb.matrix[f,v] >= 0) for f in wb.fruit if v not in f]) for v in range(wb.v)])
 
 def feasibility_check_2():
+	t = time.time() # todo remove time
 	# return True iff for every v0 and every v1 not in the fruit of v0, there exists a path of length at most two (through either 
 	#  already placed edges and/or potential edges labeled 0).
 	global wb
 	neighbors = wb.flat_matrix() # a boolean adjacency matrix -- True wherever an already placed or a potential edge exists, False elsewhere
+	td = time.time() - t # todo remove time
+	print 'Time it took to do flatten matrix = ' + str(td) # todo remove
+	t = time.time() # todo remove time
 	neighbors_of_neighbors = neighbors.dot(neighbors) # i,j is True if there exists a path of length 2 from i to j
+	td = time.time() - t # todo remove time
+	print 'Time it took to do dot the boolean matrices together = ' + str(td) # todo remove
+	t = time.time() # todo remove time
 	intra_fruit_matrix = np.zeros(shape=(wb.v, wb.v), dtype=bool)
+	td = time.time() - t # todo remove time
+	print 'Time it took to do make the intra_fruit_matrix = ' + str(td) # todo remove
+	t = time.time() # todo remove time
 	[[[label_true(intra_fruit_matrix,e[0],e[1]) for e in [(i,j) for i in fruit for j in fruit]] for v in fruit] for fruit in wb.fruit]
+	td = time.time() - t # todo remove time
+	print 'Time it took to do line 328 (the labling) = ' + str(td) # todo remove
 	return (neighbors + neighbors_of_neighbors + intra_fruit_matrix).all()
 
 def accelerate():
