@@ -1,3 +1,5 @@
+# This is an implementation of an algorithm written by Austin K. Williams.
+
 import numpy as np
 import itertools as it
 import igraph as ig
@@ -74,13 +76,10 @@ class WorkingBasket:
 		self.matrix[edge[1],edge[0]] = label
 
 	def flat_matrix(self):
-		t = time.time() # todo remove time
 		# return a uint8 np array that 'flattens' self.matrix
 		# results in a much smaller matrix (1/4th the size) for use in parallelisation of
 		#  heuristics. Is expensive to compute so use wisely.
 		flat = np.vectorize(self._flatten, otypes=[np.bool])(self.matrix)
-		td = time.time() - t # todo remove time
-		print 'Time it took to do flat_matrix = ' + str(td) # todo remove
 		return flat
 
 	def degree_of(self, vertex):
@@ -131,7 +130,6 @@ class Manager:
 					# edge placement number WorkingBasket.current_edge_label is decremented
 					wb.current_edge_label -= 1
 					# progress is saved / WorkingBaseket is pickled
-
 				else:
 					# if the most recently placed edge looks good according to the heuristics then:
 					# WorkingBasket.current_edge_label is incremented
@@ -156,10 +154,13 @@ class HeuristicConductor:
 	pass #to do
 
 def choose_new_edge(mode):
+	# todo improve the speed of this function. It is currently one of the bottlenecks.
 	t = time.time() # todo remove time
 	global wb
 
 	if not any((any((x == 0 for x in wb.matrix[y])) for y in range(wb.v))):
+		td = time.time() - t # todo remove time
+		print 'Time it took to choose_new_edge(deep)` = ' + str(td) # todo remove
 		raise EdgesExhausted('Edges exhasted')
 	else:
 		# select the new edge based on mode (deep, wide, or random). Use deep by default. Return a tuple.
@@ -263,8 +264,6 @@ def endgame():
 		sys.exit("[!] No Moore graph was found.")
 
 def label_non_edges(new_edge, label):
-	t = time.time() # todo remove time
-	# This function takes neglible time to complete.
 	# Note, label should be a negative integer.
 	# Calling this function should always be imediately preceeded by calling wb.label(new_edge, wb.current_edge_label)
 	# This function assumes new_edge has just been added to WorkingBasket
@@ -312,18 +311,22 @@ def label_non_edges(new_edge, label):
 		# rule out all edges (i,j) where i is in neighbors(v0) and j is in neighbors(v1) (if they haven't been ruled out already), 
 		#  because those edges would cause a rectangle to form
 		[wb.label((x,new_edge[(edge_end + 1)%2]),label) for x in nn_of_v0 if wb.matrix[x][new_edge[(edge_end + 1)%2]] == 0]
-	td = time.time() - t # todo remove time
-	print 'Time it took to label_non_edges = ' + str(td) # todo remove time
-	
+
 def feasibility_check_1():
-	# This function takes negligible time to complete.
+	# todo improve the speed of this function. It is currently one of the bottlenecks
+	t = time.time() # todo remove time
 	# return True iff for every vertex v, and every fruit f not containing v, there is either already an edge from v to f or else there
 	#  is a potential edge (labeled '0' in WorkingBasket) from v to f
 	global wb
-	return all([all([any(wb.matrix[f,v] >= 0) for f in wb.fruit if v not in f]) for v in range(wb.v)])
+	result = all([all([any(wb.matrix[f,v] >= 0) for f in wb.fruit if v not in f]) for v in range(wb.v)])
+	td = time.time() - t # todo remove time
+	print 'Time it too feasibilty_check_1() to run = ' + str(td) # todo remove time
+	return result
 
 def feasibility_check_2():
-	print 'starting feasibility_check_2()'
+	# todo improve the speed of this function. It is currently one of the bottlenecks. Especially important
+	#  is to not have to call wb.flat_matrix() every time this fxn is called. It should be stored as an attribute of wb
+	#  and updated with wb.label()
 	t = time.time() # todo remove time
 	# return True iff for every v0 and every v1 not in the fruit of v0, there exists a path of length at most two (through either 
 	#  already placed edges and/or potential edges labeled 0).
