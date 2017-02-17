@@ -1,4 +1,5 @@
-# This is an implementation of an algorithm written by Austin K. Williams.
+# This is an implementation of an algorithm written by Austin K. Williams to attempt to find a Moore graph of 
+#  valence 57.
 
 import numpy as np
 import itertools as it
