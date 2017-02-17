@@ -34,7 +34,7 @@ class Initialiser:
 			wb.new_basket()
 			# Optional: run an accelerator to get the known-present edges in without running through the huristic checks
 			if self.accelerate:
-				accelerate() # todo
+				accelerate()
 
 		elif self.continue_file:
 			# if continuing an old one then
@@ -61,9 +61,11 @@ class WorkingBasket:
 		self.loop_count = int(0)
 		self.intra_fruit_matrix = np.zeros(shape=(self.v, self.v), dtype=bool)
 		[[[label_true(self.intra_fruit_matrix,e[0],e[1]) for e in [(i,j) for i in fruit for j in fruit]] for v in fruit] for fruit in self.fruit]
-	
+		self.least_label_ruled_out = self.e + 1 # will store the lowest label number of any edge that's been rules out
+
 	def new_basket(self):
 		self.matrix = np.zeros(shape=(self.v, self.v), dtype=np.int32) # working basket zeroed out
+		self.neighbors = np.vectorize(self._flatten, otypes=[np.bool])(self.matrix) # a boolean adjacency matrix -- True wherever an already placed or a potential edge exists, False elsewhere
 		# rule out intra-fruit edges and self-loops
 		intra_fruit = it.chain.from_iterable([it.combinations(self.fruit[f],2) for f in range(self.val)])
 		[self.label(edge, -(self.e + 1)) for edge in intra_fruit]
@@ -74,6 +76,12 @@ class WorkingBasket:
 		# changes the label of an edge in self.matrix
 		self.matrix[edge[0],edge[1]] = label
 		self.matrix[edge[1],edge[0]] = label
+		if label < 0:
+			self.neighbors[edge[0],edge[1]] = False
+			self.neighbors[edge[1],edge[0]] = False
+		else:
+			self.neighbors[edge[0],edge[1]] = True
+			self.neighbors[edge[1],edge[0]] = True
 
 	def flat_matrix(self):
 		# return a uint8 np array that 'flattens' self.matrix
@@ -108,7 +116,8 @@ class Manager:
 		while True:
 			t = time.time() # todo remove time
 			wb.loop_count += 1
-			print 'edge_label is ' + str(wb.current_edge_label) + ' -- loop_count is ' + str(wb.loop_count)
+			print '\nedge_label is ' + str(wb.current_edge_label) + ' -- loop_count is ' + str(wb.loop_count)
+			print 'The least label number ruled out so far has been ' + str(wb.least_label_ruled_out)
 			# EdgePicker tries to pick an available edge to label WorkingBasket.current_edge_label
 			try:
 				new_edge = choose_new_edge('deep')
@@ -125,11 +134,17 @@ class Manager:
 				if not heuristic_conductor.passes():
 					# if the most recently placed edge can be ruled out then:
 					# edge placement number WorkingBasket.current_edge_label is marked and reverted
+					wb.neighbors[wb.matrix == wb.current_edge_label] = False
+					wb.neighbors[wb.matrix == -wb.current_edge_label] = True
 					wb.matrix[wb.matrix == wb.current_edge_label] = -(wb.current_edge_label -1)
 					wb.matrix[wb.matrix == -wb.current_edge_label] = 0
+
+					# record least_label_ruled_out
+					wb.least_label_ruled_out = min(wb.least_label_ruled_out, wb.current_edge_label)
+
 					# edge placement number WorkingBasket.current_edge_label is decremented
 					wb.current_edge_label -= 1
-					# progress is saved / WorkingBaseket is pickled
+
 				else:
 					# if the most recently placed edge looks good according to the heuristics then:
 					# WorkingBasket.current_edge_label is incremented
@@ -138,7 +153,7 @@ class Manager:
 					wb.label(new_edge, wb.current_edge_label)
 					# mark newly unavailable edges with -WorkingBasket.current_edge_label
 					label_non_edges(new_edge, -wb.current_edge_label)
-					# progress is saved / WorkingBasket is pickled
+			# progress is saved / WorkingBasket is pickled
 			if (wb.loop_count % 1000) == 0:
 				saver.save('')
 			td = time.time() - t # todo remove time
@@ -324,16 +339,14 @@ def feasibility_check_1():
 	return result
 
 def feasibility_check_2():
-	# todo improve the speed of this function. It is currently one of the bottlenecks. Especially important
-	#  is to not have to call wb.flat_matrix() every time this fxn is called. It should be stored as an attribute of wb
-	#  and updated with wb.label()
+	# todo improve the speed of this function if possible. This may be as good as it gets algorithmically, but
+	#  using OpenBlas to improve the .dot matrix multiplication might imporove things.
 	t = time.time() # todo remove time
 	# return True iff for every v0 and every v1 not in the fruit of v0, there exists a path of length at most two (through either 
 	#  already placed edges and/or potential edges labeled 0).
 	global wb
-	neighbors = wb.flat_matrix() # a boolean adjacency matrix -- True wherever an already placed or a potential edge exists, False elsewhere
-	neighbors_of_neighbors = neighbors.dot(neighbors) # i,j is True if there exists a path of length 2 from i to j
-	result = (neighbors + neighbors_of_neighbors + wb.intra_fruit_matrix).all()
+	neighbors_of_neighbors = wb.neighbors.dot(wb.neighbors) # i,j is True if there exists a path of length 2 from i to j
+	result = (wb.neighbors + neighbors_of_neighbors + wb.intra_fruit_matrix).all()
 	td = time.time() - t # todo remove time
 	print 'Time it took to complete feasiblity_check_2()` = ' + str(td) # todo remove
 	return result
