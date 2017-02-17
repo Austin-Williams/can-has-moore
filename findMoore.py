@@ -57,7 +57,9 @@ class WorkingBasket:
 		self.e = self.v * self.val / 2 # number of edges in the target basket
 		self.fruit = tuple(tuple(i*(self.val-1)+j for j in range(0,self.val-1)) for i in range(0,self.val))
 		self.loop_count = int(0)
-
+		self.intra_fruit_matrix = np.zeros(shape=(self.v, self.v), dtype=bool)
+		[[[label_true(self.intra_fruit_matrix,e[0],e[1]) for e in [(i,j) for i in fruit for j in fruit]] for v in fruit] for fruit in self.fruit]
+	
 	def new_basket(self):
 		self.matrix = np.zeros(shape=(self.v, self.v), dtype=np.int32) # working basket zeroed out
 		# rule out intra-fruit edges and self-loops
@@ -105,6 +107,7 @@ class Manager:
 
 	def search(self):
 		while True:
+			t = time.time() # todo remove time
 			wb.loop_count += 1
 			print 'edge_label is ' + str(wb.current_edge_label) + ' -- loop_count is ' + str(wb.loop_count)
 			# EdgePicker tries to pick an available edge to label WorkingBasket.current_edge_label
@@ -140,6 +143,8 @@ class Manager:
 					# progress is saved / WorkingBasket is pickled
 			if (wb.loop_count % 1000) == 0:
 				saver.save('')
+			td = time.time() - t # todo remove time
+			print 'Time it took run through loop = ' + str(td) # todo remove
 
 class HeuristicConductor:
 	def __init__(self):
@@ -151,6 +156,7 @@ class HeuristicConductor:
 	pass #to do
 
 def choose_new_edge(mode):
+	t = time.time() # todo remove time
 	global wb
 
 	if not any((any((x == 0 for x in wb.matrix[y])) for y in range(wb.v))):
@@ -162,6 +168,8 @@ def choose_new_edge(mode):
 			pot_degree_list = [wb.pot_degree_of(v) for v in range(wb.v)]
 			v0 = pot_degree_list.index(min([x for x in pot_degree_list if x !=0]))
 			v1 = [v for v in wb.matrix[v0]].index(0)
+			td = time.time() - t # todo remove time
+			print 'Time it took to choose_new_edge(deep)` = ' + str(td) # todo remove
 			return (v0,v1)
 		else:
 			sys.exit("[!] choose_new_edge(mode) has invalid mode set.")
@@ -255,6 +263,7 @@ def endgame():
 		sys.exit("[!] No Moore graph was found.")
 
 def label_non_edges(new_edge, label):
+	t = time.time() # todo remove time
 	# This function takes neglible time to complete.
 	# Note, label should be a negative integer.
 	# Calling this function should always be imediately preceeded by calling wb.label(new_edge, wb.current_edge_label)
@@ -303,7 +312,9 @@ def label_non_edges(new_edge, label):
 		# rule out all edges (i,j) where i is in neighbors(v0) and j is in neighbors(v1) (if they haven't been ruled out already), 
 		#  because those edges would cause a rectangle to form
 		[wb.label((x,new_edge[(edge_end + 1)%2]),label) for x in nn_of_v0 if wb.matrix[x][new_edge[(edge_end + 1)%2]] == 0]
-
+	td = time.time() - t # todo remove time
+	print 'Time it took to label_non_edges = ' + str(td) # todo remove time
+	
 def feasibility_check_1():
 	# This function takes negligible time to complete.
 	# return True iff for every vertex v, and every fruit f not containing v, there is either already an edge from v to f or else there
@@ -312,26 +323,17 @@ def feasibility_check_1():
 	return all([all([any(wb.matrix[f,v] >= 0) for f in wb.fruit if v not in f]) for v in range(wb.v)])
 
 def feasibility_check_2():
+	print 'starting feasibility_check_2()'
 	t = time.time() # todo remove time
 	# return True iff for every v0 and every v1 not in the fruit of v0, there exists a path of length at most two (through either 
 	#  already placed edges and/or potential edges labeled 0).
 	global wb
 	neighbors = wb.flat_matrix() # a boolean adjacency matrix -- True wherever an already placed or a potential edge exists, False elsewhere
-	td = time.time() - t # todo remove time
-	print 'Time it took to do flatten matrix = ' + str(td) # todo remove
-	t = time.time() # todo remove time
 	neighbors_of_neighbors = neighbors.dot(neighbors) # i,j is True if there exists a path of length 2 from i to j
+	result = (neighbors + neighbors_of_neighbors + wb.intra_fruit_matrix).all()
 	td = time.time() - t # todo remove time
-	print 'Time it took to do dot the boolean matrices together = ' + str(td) # todo remove
-	t = time.time() # todo remove time
-	intra_fruit_matrix = np.zeros(shape=(wb.v, wb.v), dtype=bool)
-	td = time.time() - t # todo remove time
-	print 'Time it took to do make the intra_fruit_matrix = ' + str(td) # todo remove
-	t = time.time() # todo remove time
-	[[[label_true(intra_fruit_matrix,e[0],e[1]) for e in [(i,j) for i in fruit for j in fruit]] for v in fruit] for fruit in wb.fruit]
-	td = time.time() - t # todo remove time
-	print 'Time it took to do line 331 (the labling) = ' + str(td) # todo remove
-	return (neighbors + neighbors_of_neighbors + intra_fruit_matrix).all()
+	print 'Time it took to complete feasiblity_check_2()` = ' + str(td) # todo remove
+	return result
 
 def accelerate():
 	# for all v in fruit(0), place an edge from v to the vth edge in every other fruit
