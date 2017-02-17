@@ -330,7 +330,7 @@ def feasibility_check_2():
 	t = time.time() # todo remove time
 	[[[label_true(intra_fruit_matrix,e[0],e[1]) for e in [(i,j) for i in fruit for j in fruit]] for v in fruit] for fruit in wb.fruit]
 	td = time.time() - t # todo remove time
-	print 'Time it took to do line 328 (the labling) = ' + str(td) # todo remove
+	print 'Time it took to do line 331 (the labling) = ' + str(td) # todo remove
 	return (neighbors + neighbors_of_neighbors + intra_fruit_matrix).all()
 
 def accelerate():
